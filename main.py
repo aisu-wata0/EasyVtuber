@@ -573,10 +573,28 @@ def main():
         else:
 
             if args.input == 'cam':
-                cap = cv2.VideoCapture(0)
-                ret, frame = cap.read()
-                if ret is None:
-                    raise Exception("Can't find Camera")
+                for backend in [cv2.CAP_DSHOW, cv2.CAP_FFMPEG, cv2.CAP_VFW, cv2.CAP_MSMF, cv2.CAP_AVFOUNDATION]:
+                    try:
+                        cap = cv2.VideoCapture(0 + backend)
+
+                        print("CV_CAP_PROP_FRAME_WIDTH: '{}'".format(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+                        print("CV_CAP_PROP_FRAME_HEIGHT : '{}'".format(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+                        print("CAP_PROP_FPS : '{}'".format(cap.get(cv2.CAP_PROP_FPS)))
+                        print("CAP_PROP_POS_MSEC : '{}'".format(cap.get(cv2.CAP_PROP_POS_MSEC)))
+                        print("CAP_PROP_FRAME_COUNT  : '{}'".format(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+                        print("CAP_PROP_BRIGHTNESS : '{}'".format(cap.get(cv2.CAP_PROP_BRIGHTNESS)))
+                        print("CAP_PROP_CONTRAST : '{}'".format(cap.get(cv2.CAP_PROP_CONTRAST)))
+                        print("CAP_PROP_SATURATION : '{}'".format(cap.get(cv2.CAP_PROP_SATURATION)))
+                        print("CAP_PROP_HUE : '{}'".format(cap.get(cv2.CAP_PROP_HUE)))
+                        print("CAP_PROP_GAIN  : '{}'".format(cap.get(cv2.CAP_PROP_GAIN)))
+                        print("CAP_PROP_CONVERT_RGB : '{}'".format(cap.get(cv2.CAP_PROP_CONVERT_RGB)))
+
+                        ret, frame = cap.read()
+                        if ret is None or not ret:
+                            raise Exception("Can't find Camera")
+                        break
+                    except Exception as e:
+                        print("Tried cv2.VideoCapture backend", backend, " Error:", e)
             else:
                 cap = cv2.VideoCapture(args.input)
                 frame_count = 0
