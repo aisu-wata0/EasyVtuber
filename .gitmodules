@@ -1,0 +1,3 @@
+[submodule "python_utils_aisu"]
+	path = python_utils_aisu
+	url = git@github.com:bfs15/python_utils_aisu.git

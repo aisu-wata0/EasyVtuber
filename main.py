@@ -1,4 +1,7 @@
+
+
 import struct
+from typing import Any, Dict, List, Set
 
 import cv2
 import torch
@@ -35,6 +38,8 @@ from tha3.util import torch_linear_to_srgb, resize_PIL_image, extract_PIL_image_
 
 import collections
 
+from AnimationsTha.animations import AnimationStatesTha
+from AnimationsTha.parameters import model_input_split
 
 def convert_linear_to_srgb(image: torch.Tensor) -> torch.Tensor:
     rgb_image = torch_linear_to_srgb(image[0:3, :, :])
@@ -550,6 +555,15 @@ def main():
 
     output_fps = FPS()
 
+    loop_counter = 0
+    var_history = {
+        'time_counter': [],
+        'model_input_arr': [],
+    }
+    model_input_arr_names = ['eyebrow_troubled_left', 'eyebrow_troubled_right', 'eyebrow_angry_left', 'eyebrow_angry_right', 'eyebrow_lowered_left', 'eyebrow_lowered_right', 'eyebrow_raised_left', 'eyebrow_raised_right', 'eyebrow_happy_left', 'eyebrow_happy_right', 'eyebrow_serious_left', 'eyebrow_serious_right', 'eye_wink_left', 'eye_wink_right', 'eye_happy_wink_left', 'eye_happy_wink_right', 'eye_surprised_left', 'eye_surprised_right', 'eye_relaxed_left', 'eye_relaxed_right', 'eye_unimpressed_left', 'eye_unimpressed_right', 'eye_raised_lower_eyelid_left', 'eye_raised_lower_eyelid_right', 'iris_small_left', 'iris_small_right', 'mouth_aaa', 'mouth_iii', 'mouth_uuu', 'mouth_eee', 'mouth_ooo', 'mouth_delta', 'mouth_lowered_corner_left', 'mouth_lowered_corner_right', 'mouth_raised_corner_left', 'mouth_raised_corner_right', 'mouth_smirk', 'iris_rotation_x', 'iris_rotation_y', 'head_x', 'head_y', 'neck_z', 'body_y', 'body_z', 'breathing']
+
+    mm = AnimationStatesTha()
+
     if not args.debug_input:
 
         if args.ifm is not None:
@@ -582,6 +596,10 @@ def main():
                         break
                     except Exception as e:
                         print("Tried cv2.VideoCapture backend", backend, " Error:", e)
+            elif args.input == 'auto':
+                from config_auto import getKwargs
+                kwargs = getKwargs()
+                mm = AnimationStatesTha(**kwargs)
             else:
                 cap = cv2.VideoCapture(args.input)
                 frame_count = 0
@@ -651,6 +669,7 @@ def main():
     print("Ready. Close this console to exit.")
 
     while True:
+        time_counter = time.perf_counter()
         # ret, frame = cap.read()
         # input_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # results = facemesh.process(input_frame)
@@ -803,6 +822,13 @@ def main():
             pose_vector_c[1] = y_angle
             pose_vector_c[2] = z_angle
 
+        elif args.input == 'auto':
+            arr = mm.update(time_counter)
+            vecs = model_input_split(arr, time_counter)
+            eyebrow_vector_c = vecs['eyebrow_vector_c']
+            mouth_eye_vector_c = vecs['mouth_eye_vector_c']
+            pose_vector_c = vecs['pose_vector_c']
+
         else:
             ret, frame = cap.read()
             input_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -853,12 +879,47 @@ def main():
             pose_vector_c[1] = y_angle * 2.0  # temp weight
             pose_vector_c[2] = (z_angle + 1.5) * 2  # temp weight
 
-        pose_vector_c[3] = pose_vector_c[1]
-        pose_vector_c[4] = pose_vector_c[2]
 
-        model_input_arr = eyebrow_vector_c
-        model_input_arr.extend(mouth_eye_vector_c)
-        model_input_arr.extend(pose_vector_c)
+        # This wasn't commented
+        # it complete broke 'body_y' and 'body_z' by overwriting them...
+        # maybe it was here for a reason, who knows
+        # pose_vector_c[3] = pose_vector_c[1]
+        # pose_vector_c[4] = pose_vector_c[2]
+
+        model_input_arr = [
+            *eyebrow_vector_c,
+            *mouth_eye_vector_c,
+            *pose_vector_c,
+        ]
+
+        if args.plot_params:
+            import matplotlib.pyplot as plt
+            var_history['time_counter'].append(time_counter)
+            var_history['model_input_arr'].append(model_input_arr)
+
+            plt_h_scale = 1
+            plt_config = {
+                'interval': 60 * 6 * plt_h_scale,
+                'hist_size': 60 * 6 * plt_h_scale,
+            }
+            if loop_counter > 1 and (loop_counter % plt_config['interval']) == 0:
+                print(f"Plot movement parameters {loop_counter}")
+                # Clear axes and re-plot
+                plt.clf()
+                for i in range(len(var_history['model_input_arr'][0])):
+                    plt.plot(var_history["time_counter"][-plt_config['hist_size']:],
+                        [
+                            v[i]
+                            for v in var_history['model_input_arr'][-plt_config['hist_size']:]
+                        ],
+                        label=model_input_arr_names[i]
+                    )
+                plt.tight_layout()
+                plt.legend(loc=2, prop={'size': 3})
+                plt.ylim(-1.0, 1.0) # Add y-axis limits
+                plt.savefig("movement_parameters_plt.pdf")
+
+            loop_counter += 1
 
         model_process.input_queue.put_nowait(model_input_arr)
 
