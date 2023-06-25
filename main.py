@@ -41,6 +41,11 @@ import collections
 from AnimationsTha.animations import AnimationStatesTha
 from AnimationsTha.parameters import model_input_split
 
+from python_utils_aisu import utils
+
+logger = utils.loggingGetLogger(__name__)
+logger.setLevel('INFO')
+
 def convert_linear_to_srgb(image: torch.Tensor) -> torch.Tensor:
     rgb_image = torch_linear_to_srgb(image[0:3, :, :])
     return torch.cat([rgb_image, image[3:4, :, :]], dim=0)
@@ -563,6 +568,41 @@ def main():
     model_input_arr_names = ['eyebrow_troubled_left', 'eyebrow_troubled_right', 'eyebrow_angry_left', 'eyebrow_angry_right', 'eyebrow_lowered_left', 'eyebrow_lowered_right', 'eyebrow_raised_left', 'eyebrow_raised_right', 'eyebrow_happy_left', 'eyebrow_happy_right', 'eyebrow_serious_left', 'eyebrow_serious_right', 'eye_wink_left', 'eye_wink_right', 'eye_happy_wink_left', 'eye_happy_wink_right', 'eye_surprised_left', 'eye_surprised_right', 'eye_relaxed_left', 'eye_relaxed_right', 'eye_unimpressed_left', 'eye_unimpressed_right', 'eye_raised_lower_eyelid_left', 'eye_raised_lower_eyelid_right', 'iris_small_left', 'iris_small_right', 'mouth_aaa', 'mouth_iii', 'mouth_uuu', 'mouth_eee', 'mouth_ooo', 'mouth_delta', 'mouth_lowered_corner_left', 'mouth_lowered_corner_right', 'mouth_raised_corner_left', 'mouth_raised_corner_right', 'mouth_smirk', 'iris_rotation_x', 'iris_rotation_y', 'head_x', 'head_y', 'neck_z', 'body_y', 'body_z', 'breathing']
 
     mm = AnimationStatesTha()
+    arr = None
+
+    import threading
+    from flask import Flask, request
+    app = Flask(__name__)
+    # Flask route to receive requests
+    @app.route('/movement', methods=['POST'])
+    def movement():
+        data = request.get_json()
+        r = {}
+        def e(name, l):
+            """
+            Use this to register errors and successes on `r`
+            """
+            try:
+                l()
+                r[name] = True
+            except Exception as e:
+                logger.exception(name)
+                r[name] = str(e)
+        # Call methods to update animation
+        for key, value in data.items():
+            # By default, allow calling any method on mm
+            l = lambda: getattr(mm, key)(**value)
+            # Specific calls (overrides default)
+            if key == 'sentiments':
+                l =  lambda: mm.set_sentiments(data['sentiments'])
+            elif key == 'mouth_keyframes':
+                l = lambda: mm.start_mouth_keyframes(data['mouth_keyframes'])
+            # Safely call it, registering errors
+            e(key, l)
+        return r
+
+    receive_requests_thread = threading.Thread(target=app.run, kwargs={'port': 7880}, daemon=True)
+    receive_requests_thread.start()
 
     if not args.debug_input:
 
@@ -823,7 +863,10 @@ def main():
             pose_vector_c[2] = z_angle
 
         elif args.input == 'auto':
-            arr = mm.update(time_counter)
+            try:
+                arr = mm.update(time_counter)
+            except Exception as e:
+                logger.exception(f"Exception on mm.update")
             vecs = model_input_split(arr, time_counter)
             eyebrow_vector_c = vecs['eyebrow_vector_c']
             mouth_eye_vector_c = vecs['mouth_eye_vector_c']
@@ -917,7 +960,7 @@ def main():
                 plt.tight_layout()
                 plt.legend(loc=2, prop={'size': 3})
                 plt.ylim(-1.0, 1.0) # Add y-axis limits
-                plt.savefig("movement_parameters_plt.pdf")
+                plt.savefig("plt_movement_parameters.pdf")
 
             loop_counter += 1
 
