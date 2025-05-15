@@ -5,6 +5,7 @@ import tkinter.messagebox
 from tkinter import ttk
 import json
 import sys
+from pathlib import Path
 
 default_arg = {
     'character': 'lambda_00',
@@ -12,6 +13,7 @@ default_arg = {
     'output': 2,
     'ifm': None,
     'osf': '127.0.0.1:11573',
+    'mediapipe': 'localhost:7879',
     'is_extend_movement': False,
     'is_anime4k': False,
     'is_alpha_split': False,
@@ -56,6 +58,7 @@ def launch():
         'output': output.get(),
         'ifm': ifm.get(),
         'osf': osf.get(),
+        'mediapipe': mediapipe.get(),
         'is_extend_movement': is_extend_movement.get(),
         'is_anime4k': is_anime4k.get(),
         'is_alpha_split': is_alpha_split.get(),
@@ -73,6 +76,10 @@ def launch():
     if args['input'] == 4:
         if len(args['osf']) == 0:
             tkinter.messagebox.showinfo('EasyVtuber Launcher', 'Please Input OpenSeeFace IP:Port')
+            return
+    if args['input'] == 5:
+        if len(args['osf']) == 0:
+            tkinter.messagebox.showinfo('EasyVtuber Launcher', 'Please Input Mediapipe IP:Port')
             return
 
     f = open('launcher.json', mode='w')
@@ -105,6 +112,10 @@ def launch():
             if len(args['osf']):
                 run_args.append('--osf')
                 run_args.append(args['osf'])
+        elif args['input'] == 5:
+            if len(args['mediapipe']):
+                run_args.append('--mediapipe')
+                run_args.append(args['mediapipe'])
 
         if args['output'] == 0:
             run_args.append('--output_webcam')
@@ -169,20 +180,33 @@ char_combo.pack(fill='x', expand=True)
 def inputChange():
     i=input.get()
     if i==0:
-        ifmLbl.pack(fill='x', expand=True)
-        ifmEnt.pack(fill='x', expand=True)
         osfLbl.pack_forget()
         osfEnt.pack_forget()
+        mediapipeLbl.pack_forget()
+        mediapipeEnt.pack_forget()
+        ifmLbl.pack(fill='x', expand=True)
+        ifmEnt.pack(fill='x', expand=True)
     elif i==4:
         ifmLbl.pack_forget()
         ifmEnt.pack_forget()
+        mediapipeLbl.pack_forget()
+        mediapipeEnt.pack_forget()
         osfLbl.pack(fill='x', expand=True)
         osfEnt.pack(fill='x', expand=True)
+    elif i==5:
+        osfLbl.pack_forget()
+        osfEnt.pack_forget()
+        ifmLbl.pack_forget()
+        ifmEnt.pack_forget()
+        mediapipeLbl.pack(fill='x', expand=True)
+        mediapipeEnt.pack(fill='x', expand=True)
     else:
         ifmLbl.pack_forget()
         ifmEnt.pack_forget()
         osfLbl.pack_forget()
         osfEnt.pack_forget()
+        mediapipeLbl.pack_forget()
+        mediapipeEnt.pack_forget()
         frameLTxt.configure(height=0)
 input = tk.IntVar(value=args['input'])
 ttk.Label(frameL, text="Face Data Source").pack(fill='x', expand=True)
@@ -192,6 +216,8 @@ ttk.Radiobutton(frameL, text='Webcam(opencv)', value=1, variable=input, command=
 ttk.Radiobutton(frameL, text='Mouse Input', value=3, variable=input, command=inputChange).pack(fill='x', expand=True)
 ttk.Radiobutton(frameL, text='Initial Debug Input', value=2, variable=input, command=inputChange).pack(fill='x',
                                                                                                        expand=True)
+ttk.Radiobutton(frameL, text='Mediapipe', value=5, variable=input, command=inputChange).pack(fill='x', expand=True)
+
 frameLTxt = ttk.Frame(frameL)
 frameLTxt.pack(fill='x', expand=True)
 ifmLbl = ttk.Label(frameLTxt, text="iFacialMocap IP:Port")
@@ -206,6 +232,12 @@ osfLbl.pack(fill='x', expand=True)
 osf = tk.StringVar(value=args['osf'])
 osfEnt = ttk.Entry(frameLTxt, textvariable=osf, state=False)
 osfEnt.pack(fill='x', expand=True)
+
+mediapipeLbl = ttk.Label(frameLTxt, text="Mediapipe IP:Port")
+mediapipeLbl.pack(fill='x', expand=True)
+mediapipe = tk.StringVar(value=args['mediapipe'])
+mediapipeEnt = ttk.Entry(frameLTxt, textvariable=mediapipe, state=False)
+mediapipeEnt.pack(fill='x', expand=True)
 inputChange()
 
 ttk.Label(frameR, text="Model Simplify").pack(fill='x', expand=True)
@@ -264,13 +296,22 @@ def closeWindow():
 
 
 def handle_focus(event):
-    characterList = []
     if event.widget == root:
-        for item in sorted(os.listdir(dirPath), key=lambda x: -os.path.getmtime(os.path.join(dirPath, x))):
-            if '.png' == item[-4:]:
-                characterList.append(item[:-4])
-        char_combo.config(value=characterList)
+        dir_path = Path(dirPath)
 
+        # Get list of all PNG files in directory and subfolders
+        png_files = dir_path.rglob('*.png')
+
+        # Sort by last modified time descending
+        sorted_files = sorted(png_files, key=lambda p: p.stat().st_mtime, reverse=True)
+
+        # Get relative paths from dirPath
+        relative_paths = [p.relative_to(dir_path) for p in sorted_files]
+
+        # Convert relative paths to POSIX format (forward slashes)
+        character_list = [p.as_posix() for p in relative_paths]
+
+        char_combo.config(values=character_list)
 
 root.bind("<FocusIn>", handle_focus)
 root.protocol('WM_DELETE_WINDOW', closeWindow)
